@@ -1,4 +1,3 @@
-```js
 import express from "express";
 import cors from "cors";
 import { chromium } from "playwright";
@@ -132,4 +131,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Serviço de automação ativo na porta " + PORT);
 });
-```
