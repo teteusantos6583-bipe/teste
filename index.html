@@ -1,0 +1,174 @@
+```html
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel de Testes</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #10131b;
+      color: #fff;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    .painel {
+      background: #1c2230;
+      border: 1px solid #343c50;
+      border-radius: 14px;
+      padding: 24px;
+    }
+    h1 { color: #65a9ff; }
+    input, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      margin-top: 12px;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    input {
+      background: #10131b;
+      color: white;
+      border: 1px solid #46516b;
+    }
+    button {
+      border: 0;
+      background: #3478f6;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #status { white-space: pre-wrap; line-height: 1.6; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <div class="painel">
+    <h1>Painel de Testes</h1>
+    <p>Teste o carregamento de uma página sua ou autorizada.</p>
+
+    <label for="url">Endereço da página de teste</label>
+    <input id="url" type="url" placeholder="https://seusite.com" />
+
+    <button id="iniciar">Iniciar teste</button>
+    <button id="etapa" disabled>Executar próxima etapa</button>
+    <button id="parar" disabled>Parar teste</button>
+
+    <div id="status">Verificando conexão com o servidor...</div>
+  </div>
+
+  <script>
+    const API = "https://teste-automacao-vr05.onrender.com";
+    let sessionId = null;
+
+    const status = document.getElementById("status");
+    const iniciar = document.getElementById("iniciar");
+    const etapa = document.getElementById("etapa");
+    const parar = document.getElementById("parar");
+
+    async function verificarServidor() {
+      try {
+        const resposta = await fetch(API);
+        const dados = await resposta.json();
+        status.textContent = dados.ok
+          ? "Servidor conectado!\nPronto para testar uma página autorizada."
+          : "O servidor respondeu, mas informou um erro.";
+      } catch {
+        status.textContent = "Não foi possível conectar ao servidor.";
+      }
+    }
+
+    iniciar.onclick = async () => {
+      const url = document.getElementById("url").value.trim();
+
+      if (!/^https?:\/\//i.test(url)) {
+        status.textContent = "Digite um endereço começando com https://";
+        return;
+      }
+
+      iniciar.disabled = true;
+      status.textContent = "Abrindo a página de teste...";
+
+      try {
+        const resposta = await fetch(API + "/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url })
+        });
+
+        const dados = await resposta.json();
+
+        if (!resposta.ok || !dados.ok) {
+          throw new Error(dados.error || "Não foi possível iniciar o teste.");
+        }
+
+        sessionId = dados.sessionId;
+        status.textContent = "Teste iniciado!\nPágina: " + dados.url;
+        etapa.disabled = false;
+        parar.disabled = false;
+      } catch (erro) {
+        status.textContent = "Erro: " + erro.message;
+      } finally {
+        iniciar.disabled = false;
+      }
+    };
+
+    etapa.onclick = async () => {
+      if (!sessionId) return;
+
+      etapa.disabled = true;
+      status.textContent = "Executando a próxima etapa...";
+
+      try {
+        const resposta = await fetch(
+          API + "/sessions/" + encodeURIComponent(sessionId) + "/step",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ waitSeconds: 5 })
+          }
+        );
+
+        const dados = await resposta.json();
+
+        if (!resposta.ok || !dados.ok) {
+          throw new Error(dados.error || "Falha na etapa.");
+        }
+
+        status.textContent =
+          "Etapa concluída!\nPágina: " + dados.url +
+          "\nClique novamente para executar outra etapa.";
+      } catch (erro) {
+        status.textContent = "Erro: " + erro.message;
+      } finally {
+        etapa.disabled = false;
+      }
+    };
+
+    parar.onclick = async () => {
+      if (!sessionId) return;
+
+      parar.disabled = true;
+      etapa.disabled = true;
+
+      try {
+        await fetch(API + "/sessions/" + encodeURIComponent(sessionId) + "/stop", {
+          method: "POST"
+        });
+        status.textContent = "Teste encerrado.";
+      } catch {
+        status.textContent = "Não foi possível confirmar o encerramento.";
+      } finally {
+        sessionId = null;
+        iniciar.disabled = false;
+      }
+    };
+
+    verificarServidor();
+  </script>
+</body>
+</html>
+```
