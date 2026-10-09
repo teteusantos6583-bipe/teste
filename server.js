@@ -1,28 +1,46 @@
+```js
 import express from "express";
 import cors from "cors";
 import { chromium } from "playwright";
 import { randomUUID } from "crypto";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 app.use(cors());
 app.use(express.json());
 
+// Mostra o painel web
+app.get("/", (_, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// Verifica se o servidor está funcionando
+app.get("/status", (_, res) => {
+  res.json({
+    ok: true,
+    service: "Automação ativa"
+  });
+});
+
 const sessions = new Map();
 let browser;
 
-app.get("/", (_, res) => {
-  res.json({ ok: true, service: "Automação ativa" });
-});
-
+// Inicia uma sessão de teste em uma página autorizada
 app.post("/sessions", async (req, res) => {
   let context;
 
   try {
-    const url = String(req.body?.url || "");
+    const url = String(req.body?.url || "").trim();
 
     if (!/^https?:\/\//i.test(url)) {
-      return res.status(400).json({ error: "URL inválida" });
+      return res.status(400).json({
+        ok: false,
+        error: "URL inválida. Use um endereço começando com https://"
+      });
     }
 
     if (!browser || !browser.isConnected()) {
@@ -50,10 +68,13 @@ app.post("/sessions", async (req, res) => {
     res.json({
       ok: true,
       sessionId: id,
-      url: page.url()
+      url: page.url(),
+      message: "Teste iniciado"
     });
   } catch (e) {
-    if (context) await context.close().catch(() => {});
+    if (context) {
+      await context.close().catch(() => {});
+    }
 
     res.status(500).json({
       ok: false,
@@ -62,26 +83,26 @@ app.post("/sessions", async (req, res) => {
   }
 });
 
+// Executa uma etapa manual de teste
 app.post("/sessions/:id/step", async (req, res) => {
   const session = sessions.get(req.params.id);
 
   if (!session) {
     return res.status(404).json({
       ok: false,
-      error: "Sessão não encontrada"
+      error: "Sessão não encontrada ou já encerrada"
     });
   }
 
   const { page } = session;
-  session.at = Date.now();
 
+  const requestedWait = Number(req.body?.waitSeconds ?? 5);
   const waitSeconds = Math.min(
-    Math.max(Number(req.body?.waitSeconds) || 5, 0),
+    Math.max(Number.isFinite(requestedWait) ? requestedWait : 5, 0),
     120
   );
 
   try {
-    // Atualiza a página de teste autorizada.
     await page.reload({
       waitUntil: "domcontentloaded",
       timeout: 30000
@@ -94,11 +115,11 @@ app.post("/sessions/:id/step", async (req, res) => {
     res.json({
       ok: true,
       url: page.url(),
-      message: "Etapa concluída",
+      message: "Etapa de teste concluída",
       completed: true
     });
   } catch (e) {
-    res.json({
+    res.status(500).json({
       ok: false,
       url: page.url(),
       error: String(e.message || e)
@@ -106,6 +127,7 @@ app.post("/sessions/:id/step", async (req, res) => {
   }
 });
 
+// Encerra uma sessão
 app.post("/sessions/:id/stop", async (req, res) => {
   const session = sessions.get(req.params.id);
 
@@ -114,9 +136,13 @@ app.post("/sessions/:id/stop", async (req, res) => {
     sessions.delete(req.params.id);
   }
 
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    message: "Sessão encerrada"
+  });
 });
 
+// Limpa sessões inativas após 10 minutos
 setInterval(async () => {
   for (const [id, session] of sessions) {
     if (Date.now() - session.at > 10 * 60 * 1000) {
@@ -131,3 +157,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Serviço de automação ativo na porta " + PORT);
 });
+```
